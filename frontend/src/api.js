@@ -2,6 +2,13 @@ const BASE = '/api';
 
 async function handle(res) {
   if (!res.ok) {
+    // An expired/invalid session on a protected call drops us back to login.
+    // (Login and change-pin return 401 for a wrong PIN — handle those inline.)
+    if (res.status === 401 && !/\/auth\/(login|change-pin)$/.test(new URL(res.url).pathname)) {
+      sessionStorage.removeItem('stylist_user');
+      window.location.reload();
+      return new Promise(() => {}); // halt; the reload takes over
+    }
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || 'Request failed');
   }
@@ -15,6 +22,14 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, passcode }),
+    }).then(handle),
+  me: () => fetch(`${BASE}/auth/me`).then(handle),
+  logout: () => fetch(`${BASE}/auth/logout`, { method: 'POST' }).then(handle),
+  changePin: (currentPin, newPin) =>
+    fetch(`${BASE}/auth/change-pin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPin, newPin }),
     }).then(handle),
 
   getWardrobe: (ownerId, filters = {}) => {

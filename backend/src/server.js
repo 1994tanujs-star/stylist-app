@@ -3,10 +3,12 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import { db } from './db.js';
 import { seed } from './seed.js';
 import authRoutes from './routes/auth.js';
 import wardrobeRoutes from './routes/wardrobe.js';
 import looksRoutes from './routes/looks.js';
+import { requireAuth } from './session.js';
 
 dotenv.config();
 // Idempotent: populates a fresh DB (e.g. a newly-mounted Railway volume) with
@@ -16,14 +18,26 @@ seed();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
-app.use(cors());
+// Lock CORS to a known origin. The frontend is served same-origin in production,
+// so cross-origin requests are disallowed by default; set ALLOWED_ORIGIN only if
+// you host the frontend separately. `credentials` is required for the cookie.
+const allowedOrigin = process.env.ALLOWED_ORIGIN;
+app.use(cors({ origin: allowedOrigin || false, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
+
 const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads');
-app.use('/uploads', express.static(uploadsDir));
+// Per-user photo access: only the uploader may fetch a file. The session cookie
+// rides along on <img> requests because everything is same-origin.
+app.get('/uploads/:file', requireAuth, (req, res) => {
+  const file = path.basename(req.params.file); // strip any path traversal
+  const owns = db.prepare('SELECT 1 FROM uploads WHERE filename = ? AND owner_id = ? LIMIT 1').get(file, req.userId);
+  if (!owns) return res.status(404).end();
+  res.sendFile(path.join(uploadsDir, file));
+});
 
 app.use('/api/auth', authRoutes);
-app.use('/api/wardrobe', wardrobeRoutes);
-app.use('/api/looks', looksRoutes);
+app.use('/api/wardrobe', requireAuth, wardrobeRoutes);
+app.use('/api/looks', requireAuth, looksRoutes);
 
 // Serve built frontend in production
 const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');

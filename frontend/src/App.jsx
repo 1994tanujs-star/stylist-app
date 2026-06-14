@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
+import { api } from './api';
 import Login from './Login';
 import TodaysLook from './TodaysLook';
 import Wardrobe from './Wardrobe';
 import History from './History';
+import ChangePin from './ChangePin';
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [tab, setTab] = useState('look');
+  const [showChangePin, setShowChangePin] = useState(false);
 
   useEffect(() => {
     const saved = sessionStorage.getItem('stylist_user');
@@ -19,6 +22,7 @@ export default function App() {
   };
 
   const logout = () => {
+    api.logout().catch(() => {});
     setUser(null);
     sessionStorage.removeItem('stylist_user');
   };
@@ -29,8 +33,13 @@ export default function App() {
     <div className="min-h-screen bg-(--color-cream) max-w-md mx-auto">
       <header className="flex items-center justify-between px-4 py-3">
         <h1 className="font-semibold">Hi, {user.name}</h1>
-        <button onClick={logout} className="text-xs text-gray-400">Switch user</button>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setShowChangePin(true)} className="text-xs text-gray-400">Change PIN</button>
+          <button onClick={logout} className="text-xs text-gray-400">Switch user</button>
+        </div>
       </header>
+
+      {showChangePin && <ChangePin onClose={() => setShowChangePin(false)} />}
 
       {tab === 'look' ? <TodaysLook user={user} /> : tab === 'wardrobe' ? <Wardrobe user={user} /> : <History user={user} />}
 

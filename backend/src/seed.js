@@ -1,10 +1,11 @@
 import { fileURLToPath } from 'url';
-import { db, ensureUsers } from './db.js';
+import { db, ensureUsers, migratePins } from './db.js';
 
 // Idempotent: safe to run on every boot. Seeds the default users, Sagorika's
 // style profile, and her order-history wardrobe — but only if they're missing.
 export function seed() {
 ensureUsers();
+migratePins();
 
 const sagorika = db.prepare("SELECT id FROM users WHERE name = 'Sagorika'").get();
 const ownerId = sagorika.id;

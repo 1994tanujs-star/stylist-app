@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { hashPin, isHashed } from './pin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Allow overriding DB location (e.g. for sandboxes where the project dir is on a
@@ -89,6 +90,20 @@ CREATE TABLE IF NOT EXISTS worn_outfits (
   note TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Tracks who uploaded each file so /uploads access can be gated per-user,
+-- including the preview shown before an item is saved.
+CREATE TABLE IF NOT EXISTS uploads (
+  filename TEXT PRIMARY KEY,
+  owner_id INTEGER NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
 `);
 
 // Idempotent migrations: add columns to tables that may already exist in a
@@ -109,8 +124,19 @@ export function ensureUsers() {
   const existing = db.prepare('SELECT COUNT(*) as c FROM users').get();
   if (existing.c === 0) {
     const insert = db.prepare('INSERT INTO users (name, passcode) VALUES (?, ?)');
-    insert.run('Sagorika', '1234');
-    insert.run('Tanuj', '5678');
-    console.log('Seeded default users: Sagorika (PIN 1234), Tanuj (PIN 5678)');
+    insert.run('Sagorika', hashPin('1234'));
+    insert.run('Tanuj', hashPin('5678'));
+    console.log('Seeded default users: Sagorika (PIN 1234), Tanuj (PIN 5678) — change these after first login');
+  }
+}
+
+// One-time upgrade: hash any PINs still stored as plaintext (from older deploys).
+export function migratePins() {
+  const users = db.prepare('SELECT id, passcode FROM users').all();
+  for (const u of users) {
+    if (!isHashed(u.passcode)) {
+      db.prepare('UPDATE users SET passcode = ? WHERE id = ?').run(hashPin(u.passcode), u.id);
+      console.log(`Upgraded plaintext PIN to hashed for user ${u.id}`);
+    }
   }
 }

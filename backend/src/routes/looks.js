@@ -85,7 +85,7 @@ Respond ONLY with JSON (no markdown fences):
 // Returns { look: null, items: [] } if no look has ever been created.
 router.get('/latest', (req, res) => {
   try {
-    const ownerId = Number(req.query.ownerId);
+    const ownerId = req.userId;
     const look = db
       .prepare('SELECT * FROM looks WHERE owner_id = ? ORDER BY id DESC LIMIT 1')
       .get(ownerId);
@@ -108,7 +108,7 @@ router.get('/latest', (req, res) => {
 // GET today's look (generate if none exists yet) — kept for potential future use
 router.get('/today', async (req, res) => {
   try {
-    const ownerId = Number(req.query.ownerId);
+    const ownerId = req.userId;
     const today = new Date().toISOString().slice(0, 10);
     let look = getTodayLook(ownerId, today);
 
@@ -136,7 +136,7 @@ router.get('/today', async (req, res) => {
 // GET all past looks for this user, most recent first, with their items
 router.get('/history', (req, res) => {
   try {
-    const ownerId = Number(req.query.ownerId);
+    const ownerId = req.userId;
     const limit = Number(req.query.limit) || 50;
     const looks = db
       .prepare('SELECT * FROM looks WHERE owner_id = ? ORDER BY id DESC LIMIT ?')
@@ -159,7 +159,7 @@ router.get('/history', (req, res) => {
 // GET the current (live) preference summary
 router.get('/preference-summary', (req, res) => {
   try {
-    const ownerId = Number(req.query.ownerId);
+    const ownerId = req.userId;
     const profile = getStyleProfile(ownerId);
     res.json({ preference_summary: profile?.preference_summary || '' });
   } catch (err) {
@@ -171,7 +171,8 @@ router.get('/preference-summary', (req, res) => {
 // Edit the current (live) preference summary
 router.put('/preference-summary', (req, res) => {
   try {
-    const { ownerId, summary } = req.body;
+    const { summary } = req.body;
+    const ownerId = req.userId;
     db.prepare('UPDATE style_profile SET preference_summary = ? WHERE owner_id = ?').run(summary, ownerId);
     res.json({ ok: true });
   } catch (err) {
@@ -183,7 +184,7 @@ router.put('/preference-summary', (req, res) => {
 // GET worn outfit catalog (with resolved wardrobe items)
 router.get('/worn-outfits', (req, res) => {
   try {
-    const ownerId = Number(req.query.ownerId);
+    const ownerId = req.userId;
     const rows = db.prepare('SELECT * FROM worn_outfits WHERE owner_id = ? ORDER BY id DESC').all(ownerId);
     const result = rows.map((row) => {
       const itemIds = JSON.parse(row.item_ids || '[]');
@@ -200,7 +201,8 @@ router.get('/worn-outfits', (req, res) => {
 // Save a worn outfit (after items are matched/added) and optionally record feedback
 router.post('/worn-outfits', async (req, res) => {
   try {
-    const { ownerId, photoUrl, itemIds, status, note } = req.body;
+    const { photoUrl, itemIds, status, note } = req.body;
+    const ownerId = req.userId;
     const date = new Date().toISOString().slice(0, 10);
     const result = db
       .prepare('INSERT INTO worn_outfits (owner_id, photo_url, date, item_ids, status, note) VALUES (?, ?, ?, ?, ?, ?)')
@@ -220,7 +222,7 @@ router.post('/worn-outfits', async (req, res) => {
 // GET history of preference summaries (how the learned profile has evolved)
 router.get('/preference-history', (req, res) => {
   try {
-    const ownerId = Number(req.query.ownerId);
+    const ownerId = req.userId;
     const rows = db
       .prepare('SELECT * FROM preference_summary_history WHERE owner_id = ? ORDER BY id DESC')
       .all(ownerId);
@@ -234,7 +236,8 @@ router.get('/preference-history', (req, res) => {
 // Generate a brand new look (used both for "Generate another" and the very first look)
 router.post('/regenerate', async (req, res) => {
   try {
-    const { ownerId, occasion, cue, refineFromLookId } = req.body;
+    const { occasion, cue, refineFromLookId } = req.body;
+    const ownerId = req.userId;
     const today = new Date().toISOString().slice(0, 10);
 
     // mark any previous "shown" look for today as regenerated (no-op if none exists)
@@ -243,7 +246,7 @@ router.post('/regenerate', async (req, res) => {
     let opts;
     if (refineFromLookId) {
       // Refine mode: tweak the chosen look's outfit instead of avoiding it.
-      const base = db.prepare('SELECT item_ids FROM looks WHERE id = ?').get(refineFromLookId);
+      const base = db.prepare('SELECT item_ids FROM looks WHERE id = ? AND owner_id = ?').get(refineFromLookId, ownerId);
       const refineItems = base ? JSON.parse(base.item_ids) : [];
       opts = { occasion, cue, refineItems };
     } else {
@@ -291,10 +294,13 @@ async function recordPreferenceSignal(ownerId, lookId, itemIds, status, note, oc
 // Submit feedback (love this / not for me) and update preference summary
 router.post('/feedback', async (req, res) => {
   try {
-    const { lookId, ownerId, status, note } = req.body; // status: 'loved' | 'not_for_me'
-    db.prepare('UPDATE looks SET status = ?, feedback_note = ? WHERE id = ?').run(status, note || null, lookId);
-
+    const { lookId, status, note } = req.body; // status: 'loved' | 'not_for_me'
+    const ownerId = req.userId;
     const look = db.prepare('SELECT * FROM looks WHERE id = ?').get(lookId);
+    if (!look) return res.status(404).json({ error: 'Look not found' });
+    if (look.owner_id !== ownerId) return res.status(403).json({ error: 'Not your look' });
+
+    db.prepare('UPDATE looks SET status = ?, feedback_note = ? WHERE id = ?').run(status, note || null, lookId);
     await recordPreferenceSignal(ownerId, lookId, look.item_ids, status, note, look.occasion);
 
     res.json({ ok: true });

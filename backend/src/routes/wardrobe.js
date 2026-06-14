@@ -23,11 +23,11 @@ const upload = multer({ storage });
 
 const router = express.Router();
 
-// List wardrobe items for a user, optional filters
+// List wardrobe items for the logged-in user, optional filters
 router.get('/', (req, res) => {
-  const { ownerId, category, color } = req.query;
+  const { category, color } = req.query;
   let query = 'SELECT * FROM wardrobe_items WHERE owner_id = ?';
-  const params = [ownerId];
+  const params = [req.userId];
   if (category) {
     query += ' AND category = ?';
     params.push(category);
@@ -79,6 +79,10 @@ router.post('/tag-photo', upload.single('photo'), async (req, res) => {
     const text = message.content[0].text.trim();
     const jsonText = text.replace(/^```json\s*/i, '').replace(/```$/, '').trim();
     const tags = JSON.parse(jsonText);
+
+    // Record the uploader so /uploads access can be gated (covers the preview
+    // shown before the item is saved).
+    db.prepare('INSERT OR REPLACE INTO uploads (filename, owner_id) VALUES (?, ?)').run(req.file.filename, req.userId);
 
     res.json({
       photo_url: `/uploads/${req.file.filename}`,
@@ -135,6 +139,8 @@ router.post('/tag-outfit-photo', upload.single('photo'), async (req, res) => {
     const jsonText = text.replace(/^```json\s*/i, '').replace(/```$/, '').trim();
     const parsed = JSON.parse(jsonText);
 
+    db.prepare('INSERT OR REPLACE INTO uploads (filename, owner_id) VALUES (?, ?)').run(req.file.filename, req.userId);
+
     res.json({
       photo_url: `/uploads/${req.file.filename}`,
       items: parsed.items || [],
@@ -147,19 +153,22 @@ router.post('/tag-outfit-photo', upload.single('photo'), async (req, res) => {
 
 // Save a new wardrobe item (after user confirms/edits tags)
 router.post('/', (req, res) => {
-  const { ownerId, photo_url, name, category, colors, pattern, fabric, formality, occasions, notes } = req.body;
+  const { photo_url, name, category, colors, pattern, fabric, formality, occasions, notes } = req.body;
   const result = db
     .prepare(
       `INSERT INTO wardrobe_items (owner_id, photo_url, name, category, colors, pattern, fabric, formality, occasions, notes, source)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`
     )
-    .run(ownerId, photo_url || null, name || '', category || '', colors || '', pattern || '', fabric || '', formality || '', occasions || '', notes || '');
+    .run(req.userId, photo_url || null, name || '', category || '', colors || '', pattern || '', fabric || '', formality || '', occasions || '', notes || '');
   res.json({ id: Number(result.lastInsertRowid) });
 });
 
 // Update an item (e.g. add photo to a seeded item, or edit tags)
 router.put('/:id', (req, res) => {
   const { id } = req.params;
+  const item = db.prepare('SELECT owner_id FROM wardrobe_items WHERE id = ?').get(id);
+  if (!item) return res.status(404).json({ error: 'Item not found' });
+  if (item.owner_id !== req.userId) return res.status(403).json({ error: 'Not your item' });
   const fields = req.body;
   const allowed = ['photo_url', 'name', 'category', 'colors', 'pattern', 'fabric', 'formality', 'occasions', 'notes', 'needs_photo'];
   const updates = [];
@@ -177,6 +186,9 @@ router.put('/:id', (req, res) => {
 });
 
 router.delete('/:id', (req, res) => {
+  const item = db.prepare('SELECT owner_id FROM wardrobe_items WHERE id = ?').get(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Item not found' });
+  if (item.owner_id !== req.userId) return res.status(403).json({ error: 'Not your item' });
   db.prepare('DELETE FROM wardrobe_items WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });
