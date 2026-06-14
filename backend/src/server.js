@@ -30,9 +30,17 @@ const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'upload
 // rides along on <img> requests because everything is same-origin.
 app.get('/uploads/:file', requireAuth, (req, res) => {
   const file = path.basename(req.params.file); // strip any path traversal
-  const owns = db.prepare('SELECT 1 FROM uploads WHERE filename = ? AND owner_id = ? LIMIT 1').get(file, req.userId);
+  const rel = `/uploads/${file}`;
+  // Owned if the user uploaded it (new flow) OR it's referenced by one of their
+  // wardrobe items / worn outfits (covers photos saved before the uploads table existed).
+  const owns =
+    db.prepare('SELECT 1 FROM uploads WHERE filename = ? AND owner_id = ? LIMIT 1').get(file, req.userId) ||
+    db.prepare('SELECT 1 FROM wardrobe_items WHERE owner_id = ? AND photo_url = ? LIMIT 1').get(req.userId, rel) ||
+    db.prepare('SELECT 1 FROM worn_outfits WHERE owner_id = ? AND photo_url = ? LIMIT 1').get(req.userId, rel);
   if (!owns) return res.status(404).end();
-  res.sendFile(path.join(uploadsDir, file));
+  res.sendFile(path.join(uploadsDir, file), (err) => {
+    if (err) res.status(404).end(); // file row exists but bytes are gone (e.g. wiped on redeploy)
+  });
 });
 
 app.use('/api/auth', authRoutes);
