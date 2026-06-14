@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -6,6 +7,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Allow overriding DB location (e.g. for sandboxes where the project dir is on a
 // network/FUSE mount that SQLite can't write to). Defaults to backend/data/stylist.db.
 const dbPath = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'stylist.db');
+
+// Ensure the parent directory exists before opening (SQLite won't create it).
+fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
 export const db = new DatabaseSync(dbPath);
 
