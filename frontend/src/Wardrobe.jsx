@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from './api';
+import { OCCASIONS, OCCASION_LABELS, parseOccasions } from './constants';
 
 const CATEGORIES = ['top', 'bottom', 'dress', 'outerwear', 'shoes', 'bag', 'belt', 'hat', 'scarf', 'jewelry'];
 const FORMALITIES = ['casual', 'work', 'occasion'];
@@ -18,6 +19,12 @@ export default function Wardrobe({ user }) {
   };
 
   useEffect(load, [user.id, filter]);
+
+  // Lock background scroll while the confirm-details modal is open.
+  useEffect(() => {
+    document.body.classList.toggle('modal-open', !!pending);
+    return () => document.body.classList.remove('modal-open');
+  }, [pending]);
 
   const handleFile = async (e) => {
     const file = e.target.files[0];
@@ -51,6 +58,14 @@ export default function Wardrobe({ user }) {
     setPending((p) => ({ ...p, tags: { ...p.tags, [key]: value } }));
   };
 
+  const toggleOccasion = (occ) => {
+    setPending((p) => {
+      const current = parseOccasions(p.tags.occasions);
+      const next = current.includes(occ) ? current.filter((o) => o !== occ) : [...current, occ];
+      return { ...p, tags: { ...p.tags, occasions: next.join(', ') } };
+    });
+  };
+
   const addPhotoToItem = (itemId) => {
     photoForItemId.current = itemId;
     fileInputRef.current.click();
@@ -82,7 +97,6 @@ export default function Wardrobe({ user }) {
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         onChange={handleFile}
         className="hidden"
       />
@@ -131,8 +145,8 @@ export default function Wardrobe({ user }) {
       )}
 
       {pending && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-5 w-full max-w-sm space-y-3">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-2xl p-5 w-full max-w-sm space-y-3 max-h-[90vh] overflow-y-auto">
             <img src={pending.photo_url} alt="" className="w-full aspect-square object-cover rounded-xl" />
             <h3 className="font-semibold">Confirm details</h3>
             <label className="block text-sm">
@@ -187,6 +201,26 @@ export default function Wardrobe({ user }) {
                 {FORMALITIES.map((f) => <option key={f} value={f}>{f}</option>)}
               </select>
             </label>
+            <div className="block text-sm">
+              Occasions
+              <div className="flex flex-wrap gap-2 mt-1">
+                {OCCASIONS.map((occ) => {
+                  const active = parseOccasions(pending.tags.occasions).includes(occ);
+                  return (
+                    <button
+                      key={occ}
+                      type="button"
+                      onClick={() => toggleOccasion(occ)}
+                      className={`px-3 py-1 rounded-full border text-sm ${
+                        active ? 'bg-(--color-ink) text-white border-(--color-ink)' : 'bg-white text-gray-600 border-gray-300'
+                      }`}
+                    >
+                      {OCCASION_LABELS[occ]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <div className="flex gap-2 pt-2">
               <button onClick={() => setPending(null)} className="flex-1 py-2 rounded-xl bg-gray-100">
                 Cancel

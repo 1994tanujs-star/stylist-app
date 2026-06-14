@@ -20,18 +20,29 @@ function getTodayLook(ownerId, date) {
     .get(ownerId, date);
 }
 
-async function generateLook(ownerId, excludeItemIds = []) {
-  const wardrobe = getWardrobe(ownerId).filter((w) => !excludeItemIds.includes(w.id) || true);
+async function generateLook(ownerId, { occasion, cue, excludeItemIds = [], refineItems = null } = {}) {
+  const wardrobe = getWardrobe(ownerId);
   const profile = getStyleProfile(ownerId);
 
   const wardrobeSummary = wardrobe
-    .map((w) => `id:${w.id} | ${w.category} | ${w.name} | colors: ${w.colors} | pattern: ${w.pattern} | fabric: ${w.fabric} | formality: ${w.formality}`)
+    .map((w) => `id:${w.id} | ${w.category} | ${w.name} | colors: ${w.colors} | pattern: ${w.pattern} | fabric: ${w.fabric} | formality: ${w.formality} | occasions: ${w.occasions || 'any'}`)
     .join('\n');
 
   const recentLooks = db
     .prepare('SELECT item_ids FROM looks WHERE owner_id = ? ORDER BY id DESC LIMIT 5')
     .all(ownerId)
     .map((l) => l.item_ids);
+
+  const targetOccasion = occasion && occasion !== 'any' ? occasion : null;
+  const refining = Array.isArray(refineItems) && refineItems.length > 0;
+
+  const occasionBlock = targetOccasion
+    ? `\nTARGET OCCASION: ${targetOccasion}. Favor items tagged for this occasion, but you MAY mix across occasions/formality when the combination still suits it (e.g. formal trousers + a casual tee can work for work).\n`
+    : '';
+  const cueBlock = cue ? `\nSTYLING CUE FROM USER: ${cue}\n` : '';
+  const refineBlock = refining
+    ? `\nCURRENT OUTFIT (item ids): ${JSON.stringify(refineItems)}\nAdjust the current outfit to match the cue above — keep most of these items and change only 1-2 to shift the vibe. Return the full resulting set of item ids.\n`
+    : '';
 
   const prompt = `You are a personal stylist. Pick one outfit (3-5 items) from the wardrobe below that forms a cohesive look matching the style profile.
 
@@ -43,12 +54,11 @@ STYLE PROFILE:
 
 LEARNED PREFERENCES SO FAR:
 ${profile?.preference_summary || 'No feedback yet — use the style profile as the guide.'}
-
-WARDROBE (id | category | name | colors | pattern | fabric | formality):
+${occasionBlock}${cueBlock}${refineBlock}
+WARDROBE (id | category | name | colors | pattern | fabric | formality | occasions):
 ${wardrobeSummary}
-
-AVOID exactly repeating these recent combos (item id sets): ${JSON.stringify(recentLooks)}
-${excludeItemIds.length ? `Also avoid using this exact set again: ${JSON.stringify(excludeItemIds)}` : ''}
+${refining ? '' : `\nAVOID exactly repeating these recent combos (item id sets): ${JSON.stringify(recentLooks)}`}
+${!refining && excludeItemIds.length ? `Also avoid using this exact set again: ${JSON.stringify(excludeItemIds)}` : ''}
 
 Respond ONLY with JSON (no markdown fences):
 {
@@ -224,19 +234,29 @@ router.get('/preference-history', (req, res) => {
 // Generate a brand new look (used both for "Generate another" and the very first look)
 router.post('/regenerate', async (req, res) => {
   try {
-    const { ownerId } = req.body;
+    const { ownerId, occasion, cue, refineFromLookId } = req.body;
     const today = new Date().toISOString().slice(0, 10);
 
     // mark any previous "shown" look for today as regenerated (no-op if none exists)
     db.prepare("UPDATE looks SET status = 'regenerated' WHERE owner_id = ? AND date = ? AND status = 'shown'").run(ownerId, today);
 
-    const prev = db.prepare('SELECT item_ids FROM looks WHERE owner_id = ? ORDER BY id DESC LIMIT 1').all(ownerId);
-    const excludeIds = prev.length ? JSON.parse(prev[0].item_ids) : [];
+    let opts;
+    if (refineFromLookId) {
+      // Refine mode: tweak the chosen look's outfit instead of avoiding it.
+      const base = db.prepare('SELECT item_ids FROM looks WHERE id = ?').get(refineFromLookId);
+      const refineItems = base ? JSON.parse(base.item_ids) : [];
+      opts = { occasion, cue, refineItems };
+    } else {
+      // Fresh look: avoid repeating the most recent set.
+      const prev = db.prepare('SELECT item_ids FROM looks WHERE owner_id = ? ORDER BY id DESC LIMIT 1').all(ownerId);
+      const excludeItemIds = prev.length ? JSON.parse(prev[0].item_ids) : [];
+      opts = { occasion, cue, excludeItemIds };
+    }
 
-    const generated = await generateLook(ownerId, excludeIds);
+    const generated = await generateLook(ownerId, opts);
     const result = db
-      .prepare("INSERT INTO looks (owner_id, date, item_ids, rationale, status) VALUES (?, ?, ?, ?, 'shown')")
-      .run(ownerId, today, JSON.stringify(generated.item_ids), generated.rationale);
+      .prepare("INSERT INTO looks (owner_id, date, item_ids, rationale, occasion, cue, status) VALUES (?, ?, ?, ?, ?, ?, 'shown')")
+      .run(ownerId, today, JSON.stringify(generated.item_ids), generated.rationale, occasion || null, cue || null);
     const look = db.prepare('SELECT * FROM looks WHERE id = ?').get(Number(result.lastInsertRowid));
     look.layout = generated.layout;
 
@@ -251,13 +271,14 @@ router.post('/regenerate', async (req, res) => {
 });
 
 // Record a preference signal (from look feedback or a worn outfit) and periodically refresh the summary
-async function recordPreferenceSignal(ownerId, lookId, itemIds, status, note) {
-  db.prepare('INSERT INTO preference_signals (owner_id, look_id, item_ids, status, note) VALUES (?, ?, ?, ?, ?)').run(
+async function recordPreferenceSignal(ownerId, lookId, itemIds, status, note, occasion = null) {
+  db.prepare('INSERT INTO preference_signals (owner_id, look_id, item_ids, status, note, occasion) VALUES (?, ?, ?, ?, ?, ?)').run(
     ownerId,
     lookId,
     itemIds,
     status,
-    note || null
+    note || null,
+    occasion || null
   );
 
   // Periodically (every 3 feedback entries) regenerate the preference summary
@@ -274,7 +295,7 @@ router.post('/feedback', async (req, res) => {
     db.prepare('UPDATE looks SET status = ?, feedback_note = ? WHERE id = ?').run(status, note || null, lookId);
 
     const look = db.prepare('SELECT * FROM looks WHERE id = ?').get(lookId);
-    await recordPreferenceSignal(ownerId, lookId, look.item_ids, status, note);
+    await recordPreferenceSignal(ownerId, lookId, look.item_ids, status, note, look.occasion);
 
     res.json({ ok: true });
   } catch (err) {
@@ -294,10 +315,11 @@ async function refreshPreferenceSummary(ownerId) {
   const describeSignal = (s) => {
     const ids = JSON.parse(s.item_ids);
     const items = ids.map((id) => itemMap[id]?.name || `item ${id}`).join(', ');
-    return `${s.status === 'loved' ? 'LOVED' : 'DISLIKED'}: ${items}${s.note ? ` (note: ${s.note})` : ''}`;
+    const occ = s.occasion ? ` [for ${s.occasion}]` : '';
+    return `${s.status === 'loved' ? 'LOVED' : 'DISLIKED'}${occ}: ${items}${s.note ? ` (note: ${s.note})` : ''}`;
   };
 
-  const prompt = `Based on this feedback history from a personal stylist app, write a short (2-4 sentence) summary of patterns in what this person tends to love vs. avoid in outfit combinations — focus on color combos, formality levels, and item pairings. Be specific and concise.
+  const prompt = `Based on this feedback history from a personal stylist app, write a short (2-4 sentence) summary of patterns in what this person tends to love vs. avoid in outfit combinations — focus on color combos, formality levels, and item pairings. Where the feedback is tagged with an occasion (e.g. [for work], [for brunch]), note any occasion-specific patterns. Be specific and concise.
 
 FEEDBACK HISTORY:
 ${signals.map(describeSignal).join('\n')}

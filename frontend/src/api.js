@@ -55,11 +55,11 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ownerId, summary }),
     }).then(handle),
-  regenerateLook: (ownerId) =>
+  regenerateLook: (ownerId, { occasion, cue, refineFromLookId } = {}) =>
     fetch(`${BASE}/looks/regenerate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ownerId }),
+      body: JSON.stringify({ ownerId, occasion, cue, refineFromLookId }),
     }).then(handle),
   sendFeedback: (lookId, ownerId, status, note) =>
     fetch(`${BASE}/looks/feedback`, {

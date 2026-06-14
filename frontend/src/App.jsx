@@ -34,7 +34,7 @@ export default function App() {
 
       {tab === 'look' ? <TodaysLook user={user} /> : tab === 'wardrobe' ? <Wardrobe user={user} /> : <History user={user} />}
 
-      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t flex">
+      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t flex pb-[env(safe-area-inset-bottom)]">
         <button
           onClick={() => setTab('look')}
           className={`flex-1 py-3 text-sm font-medium ${tab === 'look' ? 'text-(--color-ink)' : 'text-gray-400'}`}

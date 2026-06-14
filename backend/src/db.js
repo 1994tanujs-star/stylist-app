@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS wardrobe_items (
   pattern TEXT,
   fabric TEXT,
   formality TEXT,
+  occasions TEXT,
   name TEXT,
   notes TEXT,
   source TEXT DEFAULT 'manual',
@@ -52,6 +53,8 @@ CREATE TABLE IF NOT EXISTS looks (
   date TEXT,
   item_ids TEXT,
   rationale TEXT,
+  occasion TEXT,
+  cue TEXT,
   status TEXT DEFAULT 'shown',
   feedback_note TEXT,
   created_at TEXT DEFAULT (datetime('now'))
@@ -64,6 +67,7 @@ CREATE TABLE IF NOT EXISTS preference_signals (
   item_ids TEXT,
   status TEXT,
   note TEXT,
+  occasion TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -86,6 +90,20 @@ CREATE TABLE IF NOT EXISTS worn_outfits (
   created_at TEXT DEFAULT (datetime('now'))
 );
 `);
+
+// Idempotent migrations: add columns to tables that may already exist in a
+// previously-deployed DB (CREATE TABLE IF NOT EXISTS won't alter them).
+function addColumnIfMissing(table, column, definition) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+addColumnIfMissing('wardrobe_items', 'occasions', 'TEXT');
+addColumnIfMissing('looks', 'occasion', 'TEXT');
+addColumnIfMissing('looks', 'cue', 'TEXT');
+addColumnIfMissing('preference_signals', 'occasion', 'TEXT');
 
 export function ensureUsers() {
   const existing = db.prepare('SELECT COUNT(*) as c FROM users').get();

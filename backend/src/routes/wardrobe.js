@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { db } from '../db.js';
-import { anthropic, MODEL } from '../anthropic.js';
+import { anthropic, MODEL, OCCASIONS } from '../anthropic.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Allow overriding the uploads location (e.g. a mounted persistent volume in
@@ -67,7 +67,8 @@ router.post('/tag-photo', upload.single('photo'), async (req, res) => {
   "colors": "comma-separated main colors",
   "pattern": "e.g. solid, polka dot, striped, floral, print",
   "fabric": "best guess, e.g. linen, cotton, knit, denim, satin",
-  "formality": "one of: casual, work, occasion"
+  "formality": "one of: casual, work, occasion",
+  "occasions": "comma-separated subset of: ${OCCASIONS.join(', ')} — every occasion this piece could reasonably be worn for"
 }`,
             },
           ],
@@ -119,7 +120,8 @@ router.post('/tag-outfit-photo', upload.single('photo'), async (req, res) => {
       "colors": "comma-separated main colors",
       "pattern": "e.g. solid, polka dot, striped, floral, print",
       "fabric": "best guess, e.g. linen, cotton, knit, denim, satin",
-      "formality": "one of: casual, work, occasion"
+      "formality": "one of: casual, work, occasion",
+      "occasions": "comma-separated subset of: ${OCCASIONS.join(', ')} — every occasion this piece could reasonably be worn for"
     }
   ]
 }`,
@@ -145,13 +147,13 @@ router.post('/tag-outfit-photo', upload.single('photo'), async (req, res) => {
 
 // Save a new wardrobe item (after user confirms/edits tags)
 router.post('/', (req, res) => {
-  const { ownerId, photo_url, name, category, colors, pattern, fabric, formality, notes } = req.body;
+  const { ownerId, photo_url, name, category, colors, pattern, fabric, formality, occasions, notes } = req.body;
   const result = db
     .prepare(
-      `INSERT INTO wardrobe_items (owner_id, photo_url, name, category, colors, pattern, fabric, formality, notes, source)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`
+      `INSERT INTO wardrobe_items (owner_id, photo_url, name, category, colors, pattern, fabric, formality, occasions, notes, source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`
     )
-    .run(ownerId, photo_url || null, name || '', category || '', colors || '', pattern || '', fabric || '', formality || '', notes || '');
+    .run(ownerId, photo_url || null, name || '', category || '', colors || '', pattern || '', fabric || '', formality || '', occasions || '', notes || '');
   res.json({ id: Number(result.lastInsertRowid) });
 });
 
@@ -159,7 +161,7 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   const { id } = req.params;
   const fields = req.body;
-  const allowed = ['photo_url', 'name', 'category', 'colors', 'pattern', 'fabric', 'formality', 'notes', 'needs_photo'];
+  const allowed = ['photo_url', 'name', 'category', 'colors', 'pattern', 'fabric', 'formality', 'occasions', 'notes', 'needs_photo'];
   const updates = [];
   const values = [];
   for (const key of allowed) {
