@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+:root {
+  --color-cream: #f7f3ee;
+  --color-blush: #f3dde0;
+  --color-sage: #d9ddc9;
+  --color-ink: #2b2630;
+}
+
+body {
+  font-family: "Inter", system-ui, sans-serif;
+  background: var(--color-cream);
+  color: var(--color-ink);
+}
