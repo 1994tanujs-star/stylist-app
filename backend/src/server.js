@@ -3,13 +3,15 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import { db, ensureUsers } from './db.js';
+import { seed } from './seed.js';
 import authRoutes from './routes/auth.js';
 import wardrobeRoutes from './routes/wardrobe.js';
 import looksRoutes from './routes/looks.js';
 
 dotenv.config();
-ensureUsers();
+// Idempotent: populates a fresh DB (e.g. a newly-mounted Railway volume) with
+// the default users + Sagorika's seed wardrobe; no-ops once data exists.
+seed();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();

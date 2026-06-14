@@ -1,5 +1,9 @@
+import { fileURLToPath } from 'url';
 import { db, ensureUsers } from './db.js';
 
+// Idempotent: safe to run on every boot. Seeds the default users, Sagorika's
+// style profile, and her order-history wardrobe — but only if they're missing.
+export function seed() {
 ensureUsers();
 
 const sagorika = db.prepare("SELECT id FROM users WHERE name = 'Sagorika'").get();
@@ -58,4 +62,10 @@ if (existingItems === 0) {
   console.log(`Seeded ${items.length} wardrobe items for Sagorika (photos still needed)`);
 } else {
   console.log('Wardrobe items already seeded, skipping.');
+}
+}
+
+// Allow running directly: `npm run seed` / `node src/seed.js`
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  seed();
 }
