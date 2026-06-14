@@ -7,7 +7,9 @@ import { db } from '../db.js';
 import { anthropic, MODEL } from '../anthropic.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
+// Allow overriding the uploads location (e.g. a mounted persistent volume in
+// production). Defaults to backend/uploads.
+const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, '..', '..', 'uploads');
 fs.mkdirSync(uploadsDir, { recursive: true });
 
 const storage = multer.diskStorage({
