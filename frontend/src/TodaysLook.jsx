@@ -122,10 +122,22 @@ export default function TodaysLook({ user }) {
     );
   }
 
+  // A look exists but its items no longer resolve (e.g. wardrobe was re-seeded).
+  // Don't dead-end here — let the user generate a fresh look.
   if (data.items.length === 0) {
     return (
-      <div className="text-center py-20 px-6 text-gray-500">
-        <p>Add a few items to your wardrobe first, then come back here for today's look.</p>
+      <div className="text-center py-16 px-6 text-gray-500">
+        <p className="mb-4">This look's items aren't available anymore. Pick a vibe and generate a fresh one.</p>
+        <div className="mb-4">
+          <OccasionCuePicker occasion={occasion} setOccasion={setOccasion} cue={cue} setCue={setCue} />
+        </div>
+        <button
+          onClick={() => generate()}
+          disabled={generating}
+          className="px-6 py-3 rounded-xl bg-(--color-ink) text-white font-medium disabled:opacity-50"
+        >
+          {generating ? 'Styling your look…' : 'Generate my look'}
+        </button>
       </div>
     );
   }
