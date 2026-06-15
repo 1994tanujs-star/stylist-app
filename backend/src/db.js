@@ -91,6 +91,20 @@ CREATE TABLE IF NOT EXISTS worn_outfits (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+-- Inspiration looks: a saved reference image (screenshot or pasted URL) that the
+-- app breaks down into garments matched against the user's wardrobe + buy-gaps.
+CREATE TABLE IF NOT EXISTS inspiration_looks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner_id INTEGER NOT NULL,
+  photo_url TEXT,
+  source_url TEXT,
+  caption TEXT,
+  vibe TEXT,
+  analysis TEXT,
+  status TEXT DEFAULT 'saved',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL,

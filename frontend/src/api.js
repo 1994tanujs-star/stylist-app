@@ -90,4 +90,26 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ownerId, photoUrl, itemIds, status, note }),
     }).then(handle),
+
+  getInspiration: () => fetch(`${BASE}/inspiration`).then(handle),
+  addInspirationPhoto: (file, caption) => {
+    const form = new FormData();
+    form.append('photo', file);
+    if (caption) form.append('caption', caption);
+    return fetch(`${BASE}/inspiration`, { method: 'POST', body: form }).then(handle);
+  },
+  addInspirationUrl: (sourceUrl, caption) =>
+    fetch(`${BASE}/inspiration`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_url: sourceUrl, caption }),
+    }).then(handle),
+  inspirationFeedback: (id, status, note) =>
+    fetch(`${BASE}/inspiration/${id}/feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, note }),
+    }).then(handle),
+  wearInspiration: (id) => fetch(`${BASE}/inspiration/${id}/wear`, { method: 'POST' }).then(handle),
+  deleteInspiration: (id) => fetch(`${BASE}/inspiration/${id}`, { method: 'DELETE' }).then(handle),
 };

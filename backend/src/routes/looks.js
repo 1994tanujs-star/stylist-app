@@ -4,9 +4,9 @@ import { anthropic, MODEL } from '../anthropic.js';
 
 const router = express.Router();
 
-const LAYOUTS = ['stacked', 'spread', 'sidebyside'];
+export const LAYOUTS = ['stacked', 'spread', 'sidebyside'];
 
-function getWardrobe(ownerId) {
+export function getWardrobe(ownerId) {
   return db.prepare('SELECT * FROM wardrobe_items WHERE owner_id = ?').all(ownerId);
 }
 
@@ -20,7 +20,7 @@ function getTodayLook(ownerId, date) {
     .get(ownerId, date);
 }
 
-async function generateLook(ownerId, { occasion, cue, excludeItemIds = [], refineItems = null } = {}) {
+export async function generateLook(ownerId, { occasion, cue, excludeItemIds = [], refineItems = null } = {}) {
   const wardrobe = getWardrobe(ownerId);
   const profile = getStyleProfile(ownerId);
 
@@ -274,7 +274,7 @@ router.post('/regenerate', async (req, res) => {
 });
 
 // Record a preference signal (from look feedback or a worn outfit) and periodically refresh the summary
-async function recordPreferenceSignal(ownerId, lookId, itemIds, status, note, occasion = null) {
+export async function recordPreferenceSignal(ownerId, lookId, itemIds, status, note, occasion = null) {
   db.prepare('INSERT INTO preference_signals (owner_id, look_id, item_ids, status, note, occasion) VALUES (?, ?, ?, ?, ?, ?)').run(
     ownerId,
     lookId,

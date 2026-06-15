@@ -8,6 +8,7 @@ import { seed } from './seed.js';
 import authRoutes from './routes/auth.js';
 import wardrobeRoutes from './routes/wardrobe.js';
 import looksRoutes from './routes/looks.js';
+import inspirationRoutes from './routes/inspiration.js';
 import { requireAuth } from './session.js';
 
 dotenv.config();
@@ -36,7 +37,8 @@ app.get('/uploads/:file', requireAuth, (req, res) => {
   const owns =
     db.prepare('SELECT 1 FROM uploads WHERE filename = ? AND owner_id = ? LIMIT 1').get(file, req.userId) ||
     db.prepare('SELECT 1 FROM wardrobe_items WHERE owner_id = ? AND photo_url = ? LIMIT 1').get(req.userId, rel) ||
-    db.prepare('SELECT 1 FROM worn_outfits WHERE owner_id = ? AND photo_url = ? LIMIT 1').get(req.userId, rel);
+    db.prepare('SELECT 1 FROM worn_outfits WHERE owner_id = ? AND photo_url = ? LIMIT 1').get(req.userId, rel) ||
+    db.prepare('SELECT 1 FROM inspiration_looks WHERE owner_id = ? AND photo_url = ? LIMIT 1').get(req.userId, rel);
   if (!owns) return res.status(404).end();
   res.sendFile(path.join(uploadsDir, file), (err) => {
     if (err) res.status(404).end(); // file row exists but bytes are gone (e.g. wiped on redeploy)
@@ -46,6 +48,7 @@ app.get('/uploads/:file', requireAuth, (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/wardrobe', requireAuth, wardrobeRoutes);
 app.use('/api/looks', requireAuth, looksRoutes);
+app.use('/api/inspiration', requireAuth, inspirationRoutes);
 
 // Serve built frontend in production
 const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');
